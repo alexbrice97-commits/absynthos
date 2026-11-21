@@ -1,0 +1,76 @@
+# Absynth OS — BlueBuild recipe (DRAFT, not built yet)
+# Docs: https://blue-build.org  ·  Verify package names on the first CI run.
+name: absynthos
+description: Absynth Laboratories workstation — studio, FOURTHNODE, VPN, security.
+base-image: ghcr.io/ublue-os/kinoite-main   # Fedora Atomic + KDE Plasma
+image-version: latest
+
+modules:
+  # Config files under files/system are copied onto / (PipeWire, limits, default browser)
+  - type: files
+    files:
+      - source: system
+        destination: /
+
+  # --- FOURTHNODE (default browser) -------------------------------------
+  # Enabled once the FOURTHNODE repo publishes its first RPM. See FOURTHNODE-PACKAGING.md.
+  # Repo file comes from fourthnode/repo/package/fourthnode.repo once its Pages URL is real
+  # (a placeholder URL in yum.repos.d would break every image build, so it stays out until then).
+  # OS-wide browser policies already ship in files/system/etc/fourthnode/policies/managed/.
+  # - type: dnf
+  #   repos:
+  #     files:
+  #       - https://<fourthnode-dnf-repo>/fourthnode.repo
+  #   install:
+  #     packages: [fourthnode]
+
+  # --- Studio: low-latency audio + Wine for FL Studio ---------------------
+  - type: dnf
+    install:
+      packages:
+        - pipewire-jack-audio-connection-kit
+        - wine                    # Fedora Wine; swap for wine-staging if FL needs it
+        - winetricks
+        - qpwgraph                # patchbay for PipeWire
+        - tuned                   # 'latency-performance' profile
+
+  # --- Windows VM for iLok plugins (iLok can't run under Wine) -------------
+  - type: dnf
+    install:
+      packages:
+        - qemu-kvm
+        - libvirt
+        - virt-manager
+        - edk2-ovmf               # UEFI firmware for the Windows VM
+
+  # --- VPN -----------------------------------------------------------------
+  - type: dnf
+    install:
+      packages:
+        - wireguard-tools         # NetworkManager has WireGuard built in
+
+  # --- Security: defensive layer (on by default) --------------------------
+  - type: dnf
+    install:
+      packages:
+        - usbguard
+        - clamav
+        - clamav-update
+        - lynis
+        - aide
+        - wireshark
+        - nmap
+
+  # --- Flatpaks installed on first boot ----------------------------------
+  - type: default-flatpaks
+    configurations:
+      - scope: system
+        install:
+          - com.usebottles.bottles      # FL Studio Wine prefix manager
+          - org.mozilla.firefox         # fallback browser
+          - org.ghidra_sre.Ghidra
+
+  # TODO Phase 4: OpenSnitch (per-app firewall) from its upstream RPM; not confirmed in Fedora repos.
+  # Offensive toolkit lives in a Kali distrobox (created by a first-login script, Phase 4)
+
+  - type: signing   # cosign signature so updates are verified

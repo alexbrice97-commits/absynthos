@@ -1,0 +1,7 @@
+# System-wide default browser. fourthnode.desktop is installed by the fourthnode RPM.
+# Until it exists, Firefox is the fallback listed second.
+[Default Applications]
+x-scheme-handler/http=fourthnode.desktop;org.mozilla.firefox.desktop;
+x-scheme-handler/https=fourthnode.desktop;org.mozilla.firefox.desktop;
+text/html=fourthnode.desktop;org.mozilla.firefox.desktop;
+application/xhtml+xml=fourthnode.desktop;org.mozilla.firefox.desktop;

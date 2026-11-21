@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# absynth-fl-setup — prepare a Wine prefix for FL Studio + iLok (Cloud / Machine Activation).
+# Based on James's method (Nov 21). UNVERIFIED on Absynth OS: test before relying on it.
+# Physical iLok USB dongles do NOT work under Wine; use iLok Cloud or Machine Activation,
+# or the Windows dual-boot / VM fallback for USB-only licenses.
+#
+# Usage:
+#   absynth-fl-setup prefix              # create prefix, vcrun2022, msvcp140=native, DXVK
+#   absynth-fl-setup snapshot            # back up the prefix (do this before iLok!)
+#   absynth-fl-setup install <file.exe>  # run an installer (FL Studio, iLok, plugins) in the prefix, GUI mode
+#   absynth-fl-setup bonjour-off         # stop Bonjour (installed by iLok) keeping the prefix alive
+#   absynth-fl-setup restore <snapshot>  # roll the prefix back to a snapshot
+#   absynth-fl-setup run                 # launch FL Studio
+set -euo pipefail
+
+export WINEPREFIX="${WINEPREFIX:-$HOME/.local/share/absynth/fl-studio}"
+export WINEARCH=win64
+SNAPDIR="$HOME/.local/share/absynth/fl-snapshots"
+
+die() { echo "absynth-fl-setup: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null || die "missing '$1'"; }
+need wine; need winetricks
+
+case "${1:-}" in
+  prefix)
+    mkdir -p "$WINEPREFIX"
+    wineboot --init
+    winetricks -q vcrun2022 dxvk
+    # PACE needs the native msvcp140 (Wine's built-in lacks functions it uses)
+    wine reg add 'HKCU\Software\Wine\DllOverrides' /v msvcp140 /d native /f
+    echo "Prefix ready at $WINEPREFIX. Check winecfg > Libraries shows msvcp140 (native)."
+    echo "Next: install FL Studio, then run '$0 snapshot' BEFORE installing iLok."
+    ;;
+  snapshot)
+    [ -d "$WINEPREFIX" ] || die "no prefix at $WINEPREFIX"
+    mkdir -p "$SNAPDIR"
+    out="$SNAPDIR/fl-prefix-$(date +%Y%m%d-%H%M%S).tar.zst"
+    wineserver -w || true
+    tar --zstd -cf "$out" -C "$(dirname "$WINEPREFIX")" "$(basename "$WINEPREFIX")"
+    echo "Snapshot saved: $out"
+    ;;
+  restore)
+    snap="${2:-}"; [ -f "$snap" ] || die "give a snapshot file from $SNAPDIR"
+    wineserver -k || true
+    mv "$WINEPREFIX" "$WINEPREFIX.before-restore-$(date +%s)"
+    tar --zstd -xf "$snap" -C "$(dirname "$WINEPREFIX")"
+    echo "Restored $snap (old prefix kept alongside with .before-restore suffix)"
+    ;;
+  install)
+    exe="${2:-}"; [ -f "$exe" ] || die "give the installer .exe"
+    # GUI install on purpose: silent flags fail for the iLok installer under Wine.
+    # If the newest iLok installer crashes, install a legacy 5.6.x first and let it update.
+    wine "$exe"
+    ;;
+  bonjour-off)
+    wine reg add 'HKLM\System\CurrentControlSet\Services\Bonjour Service' /v Start /t REG_DWORD /d 4 /f
+    echo "Bonjour disabled in the prefix."
+    ;;
+  run)
+    exe=$(find "$WINEPREFIX/drive_c/Program Files/Image-Line" -maxdepth 3 -iname 'FL64.exe' 2>/dev/null | head -1)
+    [ -n "$exe" ] || die "FL Studio not found in the prefix; install it first"
+    wine "$exe"
+    ;;
+  *) sed -n '2,15p' "$0" ;;
+esac
